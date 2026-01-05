@@ -1,0 +1,41 @@
+[project]
+name = "contextual-task-cli"
+version = "0.1.0"
+description = "AI-powered CLI that asks intelligent questions to understand your task and generates structured plans"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = ["cli", "ai", "task-planning", "claude", "productivity"]
+
+# Core dependencies
+dependencies = [
+    "typer[all]>=0.12.0",        # CLI framework with Rich integration
+    "anthropic>=0.40.0",          # Claude API SDK
+    "pydantic>=2.0.0",            # Data validation and serialization
+    "pydantic-settings>=2.0.0",   # Environment variable management
+    "python-dotenv>=1.0.0",       # .env file support
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+# This creates the `task-cli` command when installed
+task-cli = "contextual_task_cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
