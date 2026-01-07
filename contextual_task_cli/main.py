@@ -33,6 +33,7 @@ from . import __version__
 from .config import get_settings
 from .conversation import ConversationError, ConversationManager
 from .formatters import format_as_json, format_as_markdown
+from .storage import save_plan, load_plan, list_plans
 
 
 # ============================================================================
@@ -197,6 +198,14 @@ def plan(
         typer.Option(
             "--skip-questions", "-s",
             help="Skip clarifying questions and generate plan immediately."
+        )
+    ] = False,
+
+    save: Annotated[
+        bool,
+        typer.Option(
+            "--save",
+            help="Save the plan to ~/.task-cli/plans/ after generating."
         )
     ] = False,
 ) -> None:
@@ -365,6 +374,30 @@ def plan(
             # JSON is already formatted, print as-is
             console.print(output)
 
+    # -------------------------------------------------------------------------
+    # Step 8: Save Plan (if requested)
+    # -------------------------------------------------------------------------
+    # ARCHITECTURE NOTE:
+    # main.py doesn't know HOW to save - it just calls storage.save_plan()
+    # This keeps main.py focused on CLI orchestration, not file operations.
+
+    should_save = save  # True if --save flag was used
+
+    # If no --save flag, ask the user
+    if not should_save and not output_file:
+        # Only ask if we didn't already write to a file
+        from rich.prompt import Confirm
+        should_save = Confirm.ask("\n[bold]Save this plan to ~/.task-cli/plans/?[/bold]")
+
+    if should_save:
+        try:
+            saved_path = save_plan(task_plan)
+            console.print(f"\n[green]Plan saved![/green]")
+            console.print(f"  JSON: {saved_path}.json")
+            console.print(f"  Markdown: {saved_path}.md")
+        except Exception as e:
+            console.print(f"[red]Failed to save plan:[/red] {e}")
+
 
 # ============================================================================
 # Utility Commands
@@ -392,6 +425,70 @@ def config() -> None:
 def version() -> None:
     """Show version information."""
     console.print(f"[bold]task-cli[/bold] version {__version__}")
+
+
+# ============================================================================
+# Plan Storage Commands
+# ============================================================================
+# ARCHITECTURE NOTE:
+# These commands use storage.py for all file operations.
+# main.py handles user interaction, storage.py handles persistence.
+
+@app.command(name="list")
+def list_saved_plans() -> None:
+    """List all saved plans in ~/.task-cli/plans/"""
+    from rich.table import Table
+
+    plans = list_plans()
+
+    if not plans:
+        console.print("[yellow]No saved plans found.[/yellow]")
+        console.print("[dim]Create a plan with: task-cli plan \"your task\"[/dim]")
+        return
+
+    # Display as a table
+    table = Table(title="Saved Plans")
+    table.add_column("Date", style="cyan")
+    table.add_column("Title", style="white")
+    table.add_column("Filename", style="dim")
+
+    for plan in plans:
+        # Extract date from filename (first 10 chars: 2026-01-07)
+        date = plan["filename"][:10] if len(plan["filename"]) > 10 else "Unknown"
+        table.add_row(date, plan["title"], plan["filename"])
+
+    console.print(table)
+    console.print(f"\n[dim]Load a plan with: task-cli load <filename>[/dim]")
+
+
+@app.command()
+def load(
+    filename: Annotated[
+        str,
+        typer.Argument(help="Filename of the plan to load (without .json)")
+    ],
+    output_format: Annotated[
+        OutputFormat,
+        typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.MARKDOWN,
+) -> None:
+    """Load and display a saved plan."""
+    try:
+        task_plan = load_plan(filename)
+
+        # Format and display
+        if output_format == OutputFormat.JSON:
+            console.print(format_as_json(task_plan))
+        else:
+            console.print(Markdown(format_as_markdown(task_plan)))
+
+    except FileNotFoundError:
+        console.print(f"[red]Plan not found:[/red] {filename}")
+        console.print("[dim]Use 'task-cli list' to see available plans.[/dim]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error loading plan:[/red] {e}")
+        raise typer.Exit(1)
 
 
 # ============================================================================
